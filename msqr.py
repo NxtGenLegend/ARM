@@ -11,7 +11,7 @@ end_date = '2023-01-01'
 # Download data
 data = yf.download(symbols, start=start_date, end=end_date)['Adj Close']
 
-# Calculate momentum scores (e.g., 6-month returns)
+# Calculate momentum scores 
 momentum_window = 126  # Approx 6 months (21 trading days per month)
 
 # Calculate returns over the momentum window

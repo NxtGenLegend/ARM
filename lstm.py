@@ -66,7 +66,7 @@ X_test = X_test.unsqueeze(2)
 
 # Step 4: Define the LSTM Model
 class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=50, num_layers=2):
+    def __init__(self, input_size=1, hidden_size=40, num_layers=2):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -94,10 +94,10 @@ model = LSTMModel().to(device)
 
 # Step 5: Define Loss Function and Optimizer
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
 
 # Step 6: Train the Model
-num_epochs = 10
+num_epochs = 45
 for epoch in range(num_epochs):
     model.train()
     outputs = model(X_train)

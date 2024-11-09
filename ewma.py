@@ -3,7 +3,7 @@ import pandas as pd
 import yfinance as yf
 import matplotlib.pyplot as plt
 
-# Download historical data for a stock (e.g., Apple Inc.)
+# Download historical data for a stock 
 symbol = 'AAPL'
 start_date = '2020-01-01'
 end_date = '2023-01-01'
