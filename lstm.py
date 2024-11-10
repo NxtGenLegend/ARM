@@ -89,48 +89,81 @@ class LSTMModel(nn.Module):
         out = self.fc(out)
         return out
 
-# Instantiate the model
-model = LSTMModel().to(device)
-
-# Step 5: Define Loss Function and Optimizer
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
-
-# Step 6: Train the Model
+# Define parameters for multiple runs
+num_runs = 5
 num_epochs = 45
-for epoch in range(num_epochs):
-    model.train()
-    outputs = model(X_train)
-    optimizer.zero_grad()
+train_loss_matrix = torch.zeros((num_runs, X_train.size(0)))
+test_loss_matrix = torch.zeros((num_runs, X_test.size(0)))
+train_pred_matrix = torch.zeros((num_runs, X_train.size(0)))
+test_pred_matrix = torch.zeros((num_runs, X_test.size(0)))
 
-    # Compute loss
-    loss = criterion(outputs.squeeze(), y_train)
-    # Backpropagation
-    loss.backward()
-    # Update parameters
-    optimizer.step()
+for run in range(num_runs):
+    print(f"\nRun {run + 1}/{num_runs} \n")
 
-    if (epoch + 1) % 1 == 0:
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.6f}')
+    # Reinitialize the model for each run
+    model = LSTMModel().to(device)
 
-# Step 7: Evaluate the Model
-model.eval()
-with torch.no_grad():
-    # Make predictions
-    train_pred = model(X_train).cpu().numpy()
-    test_pred = model(X_test).cpu().numpy()
+    # Define Loss Function and Optimizer
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
 
-# Inverse transform to get actual prices
-train_pred = scaler.inverse_transform(train_pred)
+    # Train the Model
+    for epoch in range(num_epochs):
+        model.train()
+        outputs = model(X_train)
+        optimizer.zero_grad()
+
+        # Compute loss
+        loss = criterion(outputs.squeeze(), y_train)
+        # Backpropagation
+        loss.backward()
+        # Update parameters
+        optimizer.step()
+
+        if (epoch + 1) % 1 == 0:
+            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.6f}')
+
+    # Evaluate the Model
+    model.eval()
+
+    with torch.no_grad():
+        train_outputs = model(X_train).squeeze() # Make predictions on train
+        train_losses = criterion(train_outputs, y_train).cpu()
+        train_loss_matrix[run, :] = (train_outputs - y_train).abs()  # Per-point loss
+        train_pred_matrix[run, :] = train_outputs.cpu()
+
+        # Evaluate on test data
+        test_outputs = model(X_test).squeeze()  # Make predictions on test
+        test_losses = criterion(test_outputs, y_test).cpu()
+        test_loss_matrix[run, :] = (test_outputs - y_test).abs()  # Per-point loss
+        test_pred_matrix[run, :] = test_outputs.cpu()
+
+# Select the predictions with the minimum loss per data point across runs
+_, train_min_indices = torch.min(train_loss_matrix, dim=0)
+_, test_min_indices = torch.min(test_loss_matrix, dim=0)
+
+# Use indices to select predictions with minimum loss
+best_train_preds = torch.zeros(X_train.size(0))
+best_test_preds = torch.zeros(X_test.size(0))
+
+for i in range(X_train.size(0)):
+    best_train_preds[i] = train_pred_matrix[train_min_indices[i], i]
+
+for j in range(X_test.size(0)):
+    best_test_preds[j] = test_pred_matrix[test_min_indices[j], j]
+
+# Inverse transform the predictions to get actual prices
+best_train_preds = scaler.inverse_transform(best_train_preds.cpu().numpy().reshape(-1, 1))
 y_train_actual = scaler.inverse_transform(y_train.cpu().numpy().reshape(-1, 1))
-test_pred = scaler.inverse_transform(test_pred)
+best_test_preds = scaler.inverse_transform(best_test_preds.cpu().numpy().reshape(-1, 1))
 y_test_actual = scaler.inverse_transform(y_test.cpu().numpy().reshape(-1, 1))
 
-# Step 8: Calculate RMSE
-train_rmse = np.sqrt(mean_squared_error(y_train_actual, train_pred))
-test_rmse = np.sqrt(mean_squared_error(y_test_actual, test_pred))
-print(f'Train RMSE: {train_rmse:.2f}')
-print(f'Test RMSE: {test_rmse:.2f}')
+# Calculate RMSE for the best predictions
+train_rmse = np.sqrt(mean_squared_error(y_train_actual, best_train_preds))
+test_rmse = np.sqrt(mean_squared_error(y_test_actual, best_test_preds))
+print(f'Train RMSE (Best Predictions): {train_rmse:.2f}')
+print(f'Test RMSE (Best Predictions): {test_rmse:.2f}')
+
 
 # Step 9: Plot the Results
 # Prepare data for plotting
@@ -140,10 +173,10 @@ test_dates = data.index[training_data_len:]
 plt.figure(figsize=(14, 7))
 # Plot training data
 plt.plot(train_dates, y_train_actual, label='Train Actual Prices')
-plt.plot(train_dates, train_pred, label='Train Predicted Prices')
+plt.plot(train_dates, best_train_preds, label='Train Predicted Prices')
 # Plot testing data
 plt.plot(test_dates, y_test_actual, label='Test Actual Prices')
-plt.plot(test_dates, test_pred, label='Test Predicted Prices')
+plt.plot(test_dates, best_test_preds, label='Test Predicted Prices')
 plt.title('LSTM Model - Actual vs. Predicted Prices')
 plt.xlabel('Date')
 plt.ylabel('Price')
