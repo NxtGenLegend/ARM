@@ -46,7 +46,8 @@ def get_hmm_signal():
     
     # Generate HMM signals
     # Bull regime: signal = 1 (buy); Bear regime: signal = -1 (sell)
-    hmm_signals = np.where(data['Regime'] == bull_state, 1, -1)
+    hmm_signals = np.where(data['Regime'] == bull_state, 1,
+               np.where(data['Regime'] == bear_state, -1, 0))
     hmm_signal_series = pd.Series(hmm_signals, index=data.index)
     
     return hmm_signal_series
