@@ -7,9 +7,12 @@ import yfinance as yf
 from hmmlearn.hmm import GaussianHMM
 import warnings
 
+
+
 from sklearn.preprocessing import StandardScaler
 
-warnings.filterwarnings("ignore")
+# Enable the filter for warnings in general
+warnings.simplefilter("always")
 
 
 def get_hmm_signal():
@@ -84,8 +87,37 @@ if __name__ == "__main__":
     scaler = StandardScaler()
     returns = scaler.fit_transform(data['Log_Returns'].values.reshape(-1, 1))
 
-    model = GaussianHMM(n_components=2, covariance_type='diag', n_iter=3000, init_params='st')
-    model.fit(returns)
+    # Try initializing and fitting the HMM model, if it doesn't converge, try with inverted returns
+    try:
+        model = GaussianHMM(n_components=2, covariance_type='full', n_iter=3000,
+                            init_params='random')  # Changed covariance and init_params
+
+        # Catch warnings during model fitting
+        with warnings.catch_warnings(record=True) as caught_warnings:  # Catch warnings
+            model.fit(returns)
+
+            # Check for convergence manually based on log likelihood change
+            prev_score = -np.inf  # Initialize previous score to a very low value
+            for i in range(3000):  # Limit the number of iterations manually
+                model.fit(returns)
+                current_score = model.score(returns)  # Get the log likelihood score
+                score_diff = current_score - prev_score
+                prev_score = current_score
+
+                if abs(score_diff) < 1e-4:  # Arbitrary threshold to decide if converged
+                    print(f"Model converged after {i + 1} iterations.")
+                    break
+            else:
+                # If no convergence after all iterations, try inverting returns
+                print("Model did not converge, inverting returns and retrying...")
+                data['Log_Returns'] = -data['Log_Returns']  # Invert the log returns
+                returns = data['Log_Returns'].values.reshape(-1, 1)
+                model.fit(returns)
+                print("Model fit after inverting returns.")
+
+    except Exception as e:  # Catch any general exceptions
+        print(f"Model did not converge, error: {e}")
+
     hidden_states = model.predict(returns)
     data['Regime'] = hidden_states
 
