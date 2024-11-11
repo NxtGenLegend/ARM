@@ -105,7 +105,8 @@ for run in range(num_runs):
 
     # Define Loss Function and Optimizer
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.002, weight_decay=1e-4) # Set weight decay for L2 reg
 
     # Train the Model
     for epoch in range(num_epochs):
