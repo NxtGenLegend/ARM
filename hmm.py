@@ -131,3 +131,11 @@ print(f'Annualized Volatility: {annualized_volatility * 100:.2f}%')
 # Calculate Sharpe Ratio (Assuming risk-free rate is 0)
 sharpe_ratio = (annualized_return) / annualized_volatility
 print(f'Sharpe Ratio: {sharpe_ratio:.2f}')
+
+def get_hmm_signal():
+    # Generate HMM signals
+    # Bull regime: signal = 1 (buy); Bear regime: signal = -1 (sell)
+    hmm_signal_series = np.where(data['Regime'] == bull_state, 1, -1)
+    hmm_signal_series = pd.Series(hmm_signal_series, index=data.index)
+    
+    return hmm_signal_series

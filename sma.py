@@ -47,3 +47,14 @@ plt.xlabel('Date')
 plt.ylabel('Price')
 plt.legend()
 plt.show()
+
+def get_sma_signal():
+    # Generate SMA signals
+    sma_signal_series = data['Signal']
+    sma_signal_series = sma_signal_series.shift(1).fillna(0)  # Shift to avoid look-ahead bias
+    sma_signal_series.index = data.index
+    
+    # Convert signals to -1 and 1
+    sma_signal_series = sma_signal_series.replace(0, -1)
+    
+    return sma_signal_series

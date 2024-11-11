@@ -183,3 +183,13 @@ plt.xlabel('Date')
 plt.ylabel('Price')
 plt.legend()
 plt.show()
+
+def get_lstm_signal():
+    # Generate LSTM signals
+    # If predicted price > today's price, signal = 1 (buy); else, signal = -1 (sell)
+    lstm_signals = np.where(best_test_preds > y_test_actual, 1, -1)
+    
+    # Align signals with dates
+    lstm_signal_series = pd.Series(lstm_signals.flatten(), index=test_dates)
+    
+    return lstm_signal_series
