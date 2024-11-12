@@ -1,6 +1,4 @@
-# sma.py
-
-# Import necessary libraries
+import matplotlib.pyplot as plt
 import pandas as pd
 import yfinance as yf
 import numpy as np
@@ -38,9 +36,6 @@ def get_sma_signal():
 if __name__ == "__main__":
     # Call the function to generate signals
     sma_signal_series = get_sma_signal()
-
-    # Plot the results
-    import matplotlib.pyplot as plt
 
     # Reconstruct the data used in get_sma_signal()
     symbol = '^GSPC'

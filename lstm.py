@@ -1,6 +1,4 @@
-# lstm.py
-
-# Import necessary libraries
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -165,9 +163,6 @@ def get_lstm_signal():
 if __name__ == "__main__":
     # Call the function to generate signals and get predictions
     lstm_signal_series, best_test_preds_np, y_test_actual = get_lstm_signal()
-
-    # Plot the results
-    import matplotlib.pyplot as plt
 
     # Get dates for plotting
     test_dates = lstm_signal_series.index
