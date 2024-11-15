@@ -47,18 +47,18 @@ if __name__ == "__main__":
     data.dropna(inplace=True)
 
     # Calculate the Simple Moving Averages
-    short_window = 50
-    long_window = 200
+    short_window = 20
+    long_window = 100
 
     data['SMA_Short'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
     data['SMA_Long'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
 
     # Generate signals
     data['Signal'] = 0
-    data['Signal'][long_window:] = \
-        np.where(data['SMA_Short'][long_window:] > data['SMA_Long'][long_window:], 1, -1)
+    data['Signal'][long_window:] = np.where(data['SMA_Short'][long_window:] > data['SMA_Long'][long_window:], 1, -1)
 
     data['Position'] = data['Signal']
+    print(data['Signal'][long_window:])
 
     # Plot the closing price along with the SMAs and signals
     plt.figure(figsize=(14, 7))
