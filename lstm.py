@@ -42,6 +42,14 @@ def create_dataset(dataset, look_back=60):
         y.append(dataset[i, 0])
     return np.array(X), np.array(y)
 
+def calculate_annualized_return(price_series):
+    """Calculate annualized return from a series of prices."""
+    cumulative_return = price_series[-1] / price_series[0] - 1
+    days = len(price_series)
+    years = days / 252  # Approximate trading days in a year
+    annualized_return = (1 + cumulative_return) ** (1 / years) - 1
+    return annualized_return
+
 def get_lstm_signal():
     # Check if GPU is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -82,8 +90,8 @@ def get_lstm_signal():
     X_test = X_test.unsqueeze(2)
 
     # Define parameters for multiple runs
-    num_runs = 5
-    num_epochs = 45
+    num_runs = 7
+    num_epochs = 45 
     train_loss_matrix = torch.zeros((num_runs, X_train.size(0)))
     test_loss_matrix = torch.zeros((num_runs, X_test.size(0)))
     train_pred_matrix = torch.zeros((num_runs, X_train.size(0)))
@@ -144,36 +152,36 @@ def get_lstm_signal():
     best_test_preds_np = scaler.inverse_transform(best_test_preds.cpu().numpy().reshape(-1, 1))
     y_test_actual = scaler.inverse_transform(y_test.cpu().numpy().reshape(-1, 1))
 
-    # Calculate RMSE for training and testing data
-    train_rmse = np.sqrt(mean_squared_error(y_train_actual, best_train_preds_np))
-    test_rmse = np.sqrt(mean_squared_error(y_test_actual, best_test_preds_np))
-    print(f'Train RMSE: {train_rmse:.2f}')
-    print(f'Test RMSE: {test_rmse:.2f}')
+    # Calculate Annualized Returns
+    train_annualized_return = calculate_annualized_return(y_train_actual.flatten())
+    test_annualized_return = calculate_annualized_return(y_test_actual.flatten())
 
-    # Generate LSTM signals
-    # If predicted price > today's price, signal = 1 (buy); else, signal = -1 (sell)
+    print(f"Train Annualized Return: {train_annualized_return * 100:.2f}%")
+    print(f"Test Annualized Return: {test_annualized_return * 100:.2f}%")
+
+    # Generate LSTM signals based on annualized returns
     lstm_signals = np.where(best_test_preds_np > y_test_actual, 1, -1)
 
     # Align signals with dates
     test_dates = data.index[len(data) - len(y_test_actual):]
     lstm_signal_series = pd.Series(lstm_signals.flatten(), index=test_dates)
 
-    return lstm_signal_series, best_test_preds_np, y_test_actual
+    return lstm_signal_series, train_annualized_return, test_annualized_return, best_test_preds_np, y_test_actual
 
 if __name__ == "__main__":
-    # Call the function to generate signals and get predictions
-    lstm_signal_series, best_test_preds_np, y_test_actual = get_lstm_signal()
+    # Call the function to generate signals and get annualized returns
+    lstm_signal_series, train_annualized_return, test_annualized_return, best_test_preds_np, y_test_actual = get_lstm_signal()
 
     # Get dates for plotting
     test_dates = lstm_signal_series.index
 
     # Plot the Results
     plt.figure(figsize=(14, 7))
-    # Plot testing data
-    plt.plot(test_dates, y_test_actual, label='Actual Prices')
-    plt.plot(test_dates, best_test_preds_np, label='Predicted Prices')
-    plt.title('LSTM Model - Actual vs. Predicted Prices')
+    # Plot actual vs predicted returns
+    plt.plot(test_dates, y_test_actual, label='Actual Returns')
+    plt.plot(test_dates, best_test_preds_np, label='Predicted Returns')
+    plt.title('LSTM Model - Actual vs. Predicted Annualized Returns')
     plt.xlabel('Date')
-    plt.ylabel('Price')
+    plt.ylabel('Annualized Return')
     plt.legend()
     plt.show()
