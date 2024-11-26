@@ -1,14 +1,10 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yfinance as yf
 from hmmlearn.hmm import GaussianHMM
+import matplotlib.pyplot as plt
 import warnings
-
-from sklearn.preprocessing import StandardScaler
-
-# Enable the filter for warnings in general
-warnings.simplefilter("always")
+warnings.filterwarnings("ignore")
 
 def get_hmm_signal():
     # Data Collection
@@ -27,37 +23,9 @@ def get_hmm_signal():
     # Prepare Data for HMM
     returns = data['Log_Returns'].values.reshape(-1, 1)
 
-
-    # Try initializing and fitting the HMM model, if it doesn't converge, try with inverted returns
-    try:
-        model = GaussianHMM(n_components=2, covariance_type='full', n_iter=3000,
-                            init_params='random')  # Changed covariance and init_params
-
-        # Catch warnings during model fitting
-        with warnings.catch_warnings(record=True) as caught_warnings:  # Catch warnings
-            model.fit(returns)
-
-            # Check for convergence manually based on log likelihood change
-            prev_score = -np.inf  # Initialize previous score to a very low value
-            for i in range(3000):  # Limit the number of iterations manually
-                model.fit(returns)
-                current_score = model.score(returns)  # Get the log likelihood score
-                score_diff = current_score - prev_score
-                prev_score = current_score
-
-                if abs(score_diff) < 1e-4:  # Arbitrary threshold to decide if converged
-                    print(f"Model converged after {i + 1} iterations.")
-                    break
-            else:
-                # If no convergence after all iterations, try inverting returns
-                print("Model did not converge, inverting returns and retrying...")
-                data['Log_Returns'] = -data['Log_Returns']  # Invert the log returns
-                returns = data['Log_Returns'].values.reshape(-1, 1)
-                model.fit(returns)
-                print("Model fit after inverting returns.")
-
-    except Exception as e:  # Catch any general exceptions
-        print(f"Model did not converge, error: {e}")
+    # Fit the HMM Model
+    model = GaussianHMM(n_components=2, covariance_type='full', n_iter=1000)
+    model.fit(returns)
 
     # Predict the Regimes
     hidden_states = model.predict(returns)
@@ -65,6 +33,9 @@ def get_hmm_signal():
 
     # Analyze the Regimes
     means = np.array([model.means_[i][0] for i in range(model.n_components)])
+    variances = np.array([np.diag(model.covars_[i])[0] for i in range(model.n_components)])
+    print("Means of each hidden state:", means)
+    print("Variances of each hidden state:", variances)
 
     # Identify bull and bear markets based on mean returns
     if means[0] > means[1]:
@@ -74,41 +45,96 @@ def get_hmm_signal():
         bull_state = 1
         bear_state = 0
 
-    # Generate HMM signals
-    # Bull regime: signal = 1 (buy); Bear regime: signal = -1 (sell)
-    hmm_signals = np.where(data['Regime'] == bull_state, 1,
-                           np.where(data['Regime'] == bear_state, -1, 0))
-    hmm_signal_series = pd.Series(hmm_signals, index=data.index)
+    return data, hidden_states, bull_state, bear_state
 
-    return hmm_signal_series
+def rebalance_portfolio(state, bull_state, bear_state):
+    if state == bull_state:
+        # Bull market: Increase stock exposure
+        stock_weight = 0.7
+        bond_weight = 0.3
+    else:
+        # Bear market: Decrease stock exposure
+        stock_weight = 0.4
+        bond_weight = 0.6
+    return stock_weight, bond_weight
+
+def backtest_strategy(data, hidden_states, bull_state, bear_state):
+    # Get bond data
+    bond_symbol = 'IEF'
+    bond_data = yf.download(bond_symbol, start=data.index.min(), end=data.index.max())
+    bond_data = bond_data[['Close']]
+    bond_data.rename(columns={'Close': 'Bond_Close'}, inplace=True)
+    bond_data.dropna(inplace=True)
+
+    # Calculate bond returns
+    bond_data['Bond_Log_Returns'] = np.log(bond_data['Bond_Close'] / bond_data['Bond_Close'].shift(1))
+    bond_data.dropna(inplace=True)
+
+    # Align data
+    data = data.join(bond_data['Bond_Log_Returns'], how='inner')
+
+    # Initialize portfolio
+    portfolio = pd.DataFrame(index=data.index)
+    portfolio['Total'] = 100000  # Starting with $100,000
+
+    # Backtest
+    for i in range(1, len(data)):
+        state = data['Regime'].iloc[i - 1]
+        stock_weight, bond_weight = rebalance_portfolio(state, bull_state, bear_state)
+        stock_return = data['Log_Returns'].iloc[i]
+        bond_return = data['Bond_Log_Returns'].iloc[i]
+        total_return = np.exp(stock_weight * stock_return + bond_weight * bond_return)
+        portfolio['Total'].iloc[i] = portfolio['Total'].iloc[i - 1] * total_return
+
+    return portfolio
+
+def calculate_performance(portfolio):
+    # Calculate cumulative returns
+    cumulative_return = (portfolio['Total'][-1] / portfolio['Total'][0]) - 1
+
+    # Calculate annualized return
+    years = (portfolio.index[-1] - portfolio.index[0]).days / 365.25
+    annualized_return = (portfolio['Total'][-1] / portfolio['Total'][0]) ** (1 / years) - 1
+
+    # Calculate annualized volatility
+    portfolio['Daily_Return'] = portfolio['Total'].pct_change()
+    annualized_volatility = portfolio['Daily_Return'].std() * np.sqrt(252)
+
+    # Calculate Sharpe Ratio
+    sharpe_ratio = (annualized_return) / annualized_volatility
+
+    return cumulative_return, annualized_return, annualized_volatility, sharpe_ratio
 
 if __name__ == "__main__":
+    # Get HMM signals and regimes
+    data, hidden_states, bull_state, bear_state = get_hmm_signal()
 
-    # Call the function to generate signals
-    hmm_signal_series = get_hmm_signal()
-
-    # Fetch the same data used in get_hmm_signal() for plotting
-    symbol = '^GSPC'  # S&P 500 index
-    start_date = '2010-01-01'
-    end_date = '2023-01-01'
-
-    data = yf.download(symbol, start=start_date, end=end_date)
-    data = data[['Close']]
-    data.dropna(inplace=True)
-
-    # Align the signals with the data
-    data = data.join(hmm_signal_series.rename('Signal'), how='inner')
-
-    # Map signals to regimes for plotting
-    data['Regime'] = np.where(data['Signal'] == 1, 'Bull', 'Bear')
-
-    # Plot the Regimes
+    # Plot the regimes
     plt.figure(figsize=(14, 7))
-    for regime in ['Bull', 'Bear']:
-        regime_data = data[data['Regime'] == regime]
-        plt.plot(regime_data.index, regime_data['Close'], '.', label=f'{regime} Regime')
+    for i in range(2):  # Assuming two hidden states (bull and bear)
+        state = (hidden_states == i)
+        plt.plot(data.index[state], data['Close'][state], '.', label=f'State {i}')
     plt.title('Market Regimes Identified by HMM')
     plt.xlabel('Date')
     plt.ylabel('Close Price')
     plt.legend()
     plt.show()
+
+    # Backtest the strategy
+    portfolio = backtest_strategy(data, hidden_states, bull_state, bear_state)
+
+    # Plot portfolio performance
+    plt.figure(figsize=(14, 7))
+    plt.plot(portfolio.index, portfolio['Total'], label='HMM Strategy Portfolio')
+    plt.title('Portfolio Performance Using HMM Regime Switching')
+    plt.xlabel('Date')
+    plt.ylabel('Portfolio Value')
+    plt.legend()
+    plt.show()
+
+    # Calculate and print performance metrics
+    cumulative_return, annualized_return, annualized_volatility, sharpe_ratio = calculate_performance(portfolio)
+    print(f'Cumulative Return: {cumulative_return * 100:.2f}%')
+    print(f'Annualized Return: {annualized_return * 100:.2f}%')
+    print(f'Annualized Volatility: {annualized_volatility * 100:.2f}%')
+    print(f'Sharpe Ratio: {sharpe_ratio:.2f}')
