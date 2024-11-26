@@ -9,32 +9,23 @@ from sklearn.metrics import mean_squared_error
 import warnings
 warnings.filterwarnings("ignore")
 
-# Define the LSTM Model at the module level
+# Define the LSTM Model
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=40, num_layers=2):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-
-        # Define the LSTM layer
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        # Define the output layer
         self.fc = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-        # Initialize hidden state and cell state
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-
-        # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))
-        # Get the output from the last time step
         out = out[:, -1, :]
-        # Pass through the fully connected layer
         out = self.fc(out)
         return out
 
-# Define the create_dataset function at the module level
 def create_dataset(dataset, look_back=60):
     X, y = [], []
     for i in range(look_back, len(dataset)):
@@ -42,35 +33,37 @@ def create_dataset(dataset, look_back=60):
         y.append(dataset[i, 0])
     return np.array(X), np.array(y)
 
-def calculate_annualized_return(price_series):
-    """Calculate annualized return from a series of prices."""
-    cumulative_return = price_series[-1] / price_series[0] - 1
-    days = len(price_series)
-    years = days / 252  # Approximate trading days in a year
-    annualized_return = (1 + cumulative_return) ** (1 / years) - 1
-    return annualized_return
-
 def get_lstm_signal():
     # Check if GPU is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using device: {device}')
     
     # Data Collection
-    symbol = '^GSPC'  # S&P 500 index symbol
-    start_date = '2000-01-01'  # Extended start date for larger dataset
-    end_date = '2023-12-31'  # Adjust the end date as needed
+    symbol = '^GSPC'
+    start_date = '2000-01-01'
+    end_date = '2023-12-31'
 
     data = yf.download(symbol, start=start_date, end=end_date)
     data = data[['Close']]
     data.dropna(inplace=True)
 
-    # Data Preprocessing
-    close_prices = data['Close'].values.reshape(-1, 1)
+    # Calculate Daily Returns
+    data['Daily_Return'] = data['Close'].pct_change()
+    data.dropna(inplace=True)
+
+    # Calculate Annualized Returns (rolling 252 trading days)
+    data['Annualized_Return'] = (
+        (1 + data['Daily_Return']).rolling(window=252).apply(np.prod, raw=True) ** (252 / 252) - 1
+    )
+    data.dropna(inplace=True)
+
+    # Preprocessing: Use Annualized Returns
+    returns = data['Annualized_Return'].values.reshape(-1, 1)
     scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(close_prices)
+    scaled_data = scaler.fit_transform(returns)
 
     training_data_len = int(np.ceil(len(scaled_data) * 0.8))
-    look_back = 60  # Define the look_back window size
+    look_back = 60
 
     # Create Training and Testing Datasets
     train_data = scaled_data[0:training_data_len]
@@ -90,22 +83,22 @@ def get_lstm_signal():
     X_test = X_test.unsqueeze(2)
 
     # Define parameters for multiple runs
-    num_runs = 7
-    num_epochs = 45 
+    num_runs = 2
+    num_epochs = 45
     train_loss_matrix = torch.zeros((num_runs, X_train.size(0)))
     test_loss_matrix = torch.zeros((num_runs, X_test.size(0)))
     train_pred_matrix = torch.zeros((num_runs, X_train.size(0)))
     test_pred_matrix = torch.zeros((num_runs, X_test.size(0)))
 
     for run in range(num_runs):
-        print(f"\nRun {run + 1}/{num_runs} \n")
+        print(f"\nRun {run + 1}/{num_runs}\n")
 
         # Reinitialize the model for each run
         model = LSTMModel().to(device)
 
         # Define Loss Function and Optimizer
         criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.002, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
 
         # Train the Model
         for epoch in range(num_epochs):
@@ -146,42 +139,35 @@ def get_lstm_signal():
     for j in range(X_test.size(0)):
         best_test_preds[j] = test_pred_matrix[test_min_indices[j], j]
 
-    # Inverse transform the predictions to get actual prices
+    # Inverse transform the predictions
     best_train_preds_np = scaler.inverse_transform(best_train_preds.cpu().numpy().reshape(-1, 1))
-    y_train_actual = scaler.inverse_transform(y_train.cpu().numpy().reshape(-1, 1))
     best_test_preds_np = scaler.inverse_transform(best_test_preds.cpu().numpy().reshape(-1, 1))
+    y_train_actual = scaler.inverse_transform(y_train.cpu().numpy().reshape(-1, 1))
     y_test_actual = scaler.inverse_transform(y_test.cpu().numpy().reshape(-1, 1))
 
-    # Calculate Annualized Returns
-    train_annualized_return = calculate_annualized_return(y_train_actual.flatten())
-    test_annualized_return = calculate_annualized_return(y_test_actual.flatten())
+    # Calculate RMSE
+    train_rmse = np.sqrt(mean_squared_error(y_train_actual, best_train_preds_np))
+    test_rmse = np.sqrt(mean_squared_error(y_test_actual, best_test_preds_np))
+    print(f'Train RMSE: {train_rmse:.6f}')
+    print(f'Test RMSE: {test_rmse:.6f}')
 
-    print(f"Train Annualized Return: {train_annualized_return * 100:.2f}%")
-    print(f"Test Annualized Return: {test_annualized_return * 100:.2f}%")
-
-    # Generate LSTM signals based on annualized returns
+    # Generate signals
     lstm_signals = np.where(best_test_preds_np > y_test_actual, 1, -1)
-
-    # Align signals with dates
     test_dates = data.index[len(data) - len(y_test_actual):]
     lstm_signal_series = pd.Series(lstm_signals.flatten(), index=test_dates)
 
-    return lstm_signal_series, train_annualized_return, test_annualized_return, best_test_preds_np, y_test_actual
+    return lstm_signal_series, best_test_preds_np, y_test_actual
 
 if __name__ == "__main__":
-    # Call the function to generate signals and get annualized returns
-    lstm_signal_series, train_annualized_return, test_annualized_return, best_test_preds_np, y_test_actual = get_lstm_signal()
+    # Call the function to generate signals and get predictions
+    lstm_signal_series, test_preds, y_test_actual = get_lstm_signal()
 
-    # Get dates for plotting
-    test_dates = lstm_signal_series.index
-
-    # Plot the Results
+    # Plot Results
     plt.figure(figsize=(14, 7))
-    # Plot actual vs predicted returns
-    plt.plot(test_dates, y_test_actual, label='Actual Returns')
-    plt.plot(test_dates, best_test_preds_np, label='Predicted Returns')
-    plt.title('LSTM Model - Actual vs. Predicted Annualized Returns')
+    plt.plot(test_preds, label='Predicted Annualized Returns')
+    plt.plot(y_test_actual, label='Actual Annualized Returns')
+    plt.title('LSTM Model - Predicted vs Actual Annualized Returns')
     plt.xlabel('Date')
-    plt.ylabel('Annualized Return')
+    plt.ylabel('Annualized Returns')
     plt.legend()
     plt.show()
