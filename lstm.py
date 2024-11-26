@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 
 # Define the LSTM Model
 class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=40, num_layers=2):
+    def __init__(self, input_size=1, hidden_size=60, num_layers=2):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -83,7 +83,7 @@ def get_lstm_signal():
     X_test = X_test.unsqueeze(2)
 
     # Define parameters for multiple runs
-    num_runs = 2
+    num_runs = 5
     num_epochs = 45
     train_loss_matrix = torch.zeros((num_runs, X_train.size(0)))
     test_loss_matrix = torch.zeros((num_runs, X_test.size(0)))
