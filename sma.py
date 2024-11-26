@@ -24,8 +24,7 @@ def get_sma_signal():
 
     # Generate signals
     data['Signal'] = 0
-    data['Signal'][long_window:] = \
-        np.where(data['SMA_Short'][long_window:] > data['SMA_Long'][long_window:], 1, -1)
+    data['Signal'][long_window:] = np.where(data['SMA_Short'][long_window:] > data['SMA_Long'][long_window:], 1, -1)
 
     # Shift signals to avoid look-ahead bias
     sma_signal_series = data['Signal'].shift(1).fillna(0)
@@ -37,7 +36,7 @@ if __name__ == "__main__":
     # Call the function to generate signals
     sma_signal_series = get_sma_signal()
 
-    # Reconstruct the data used in get_sma_signal()
+    # Reconstruct data used in get_sma_signal()
     symbol = '^GSPC'
     start_date = '2000-01-01'
     end_date = '2023-12-31'
@@ -54,11 +53,21 @@ if __name__ == "__main__":
     data['SMA_Long'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
 
     # Generate signals
-    data['Signal'] = 0
-    data['Signal'][long_window:] = np.where(data['SMA_Short'][long_window:] > data['SMA_Long'][long_window:], 1, -1)
+    # Uncomments
+    # MAKE ARRAY OF LEN, INITIALIZE WITH ZEROS
+    data['Signal'] = np.array(data['SMA_Short'])
+    for i in range(len(data['Signal'])):
+        if (data['SMA_Short'][i] > data['SMA_Long'][i]):
+            data['Signal'][i] = 1
+        elif (data['SMA_Short'][i] < data['SMA_Long'][i]):
+            data['Signal'][i] = -1
+        #data['Signal'][i] = data['SMA_Short'][i] > data['SMA_Long'][i]
+    #print(np.where(data['SMA_Short'][long_window:] > data['SMA_Long'][long_window:], 1, -1))
 
     data['Position'] = data['Signal']
-    print(data['Signal'][long_window:])
+    #for i in range(len(data['Signal'])):
+    #    print(data['Signal'][i])
+    #print(data['Signal'][long_window:])
 
     # Plot the closing price along with the SMAs and signals
     plt.figure(figsize=(14, 7))
