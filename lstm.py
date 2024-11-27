@@ -151,10 +151,13 @@ def get_lstm_signal():
     print(f'Train RMSE: {train_rmse:.6f}')
     print(f'Test RMSE: {test_rmse:.6f}')
 
-    # Generate signals
-    lstm_signals = np.where(best_test_preds_np > y_test_actual, 1, -1)
+    # Generate signals based on comparison with the previous day's actual return
+    shifted_actual = np.roll(y_test_actual, shift=1)  # Shift actual values by 1
+    lstm_signals = np.where(best_test_preds_np[1:] > shifted_actual[1:], 1, -1)
+
+    # Align dates (exclude the first date, as it lacks a previous day for comparison)
     test_dates = data.index[len(data) - len(y_test_actual):]
-    lstm_signal_series = pd.Series(lstm_signals.flatten(), index=test_dates)
+    lstm_signal_series = pd.Series(lstm_signals.flatten(), index=test_dates[1:])
 
     return lstm_signal_series, best_test_preds_np, y_test_actual
 
