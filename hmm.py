@@ -7,10 +7,10 @@ import warnings
 warnings.filterwarnings("ignore")
 
 def get_hmm_signal():
-    # Data Collection
-    symbol = '^GSPC'  # S&P 500 index
+    """HMM model for regime detection"""
+    symbol = '^GSPC'
     start_date = '2010-01-01'
-    end_date = '2023-01-01'
+    end_date = '2023-12-31'
 
     data = yf.download(symbol, start=start_date, end=end_date)
     data = data[['Close']]
@@ -105,7 +105,7 @@ def calculate_performance(portfolio):
 
     return cumulative_return, annualized_return, annualized_volatility, sharpe_ratio
 
-if __name__ == "__main__":
+def main():
     # Get HMM signals and regimes
     data, hidden_states, bull_state, bear_state = get_hmm_signal()
 
@@ -113,7 +113,8 @@ if __name__ == "__main__":
     plt.figure(figsize=(14, 7))
     for i in range(2):  # Assuming two hidden states (bull and bear)
         state = (hidden_states == i)
-        plt.plot(data.index[state], data['Close'][state], '.', label=f'State {i}')
+        plt.plot(data.index[state], data['Close'][state], '.', 
+                label=f'State {i}')
     plt.title('Market Regimes Identified by HMM')
     plt.xlabel('Date')
     plt.ylabel('Close Price')
@@ -138,3 +139,6 @@ if __name__ == "__main__":
     print(f'Annualized Return: {annualized_return * 100:.2f}%')
     print(f'Annualized Volatility: {annualized_volatility * 100:.2f}%')
     print(f'Sharpe Ratio: {sharpe_ratio:.2f}')
+
+if __name__ == "__main__":
+    main()
