@@ -10,8 +10,7 @@ warnings.filterwarnings("ignore")
 
 def get_hmm_signal(
     target_symbol,
-    #train_symbols=['^GSPC', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'JNJ', 'WMT', 'KO', 'PEP', 'XOM'],
-    train_symbols=['AAPL', 'MSFT', 'NVDA', 'TSLA', 'JNJ', 'WMT', 'KO', 'PEP', 'XOM'],
+    train_symbols=['^GSPC', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'JNJ', 'WMT', 'KO', 'PEP', 'XOM'],
     start_date='2010-01-01',
     end_date='2023-12-31'
 ):

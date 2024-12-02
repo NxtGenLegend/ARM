@@ -112,7 +112,7 @@ class CombinedStrategy:
         plt.show()
 
 def main():
-    strategy = CombinedStrategy('UNH')
+    strategy = CombinedStrategy('JNJ')
     signals = strategy.generate_signals()
     portfolio = strategy.backtest_strategy()
     metrics = strategy.calculate_metrics(portfolio)
