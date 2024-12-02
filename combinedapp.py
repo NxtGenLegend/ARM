@@ -105,7 +105,7 @@ class CombinedStrategy:
         plt.plot(portfolio['Value'], label='Combined Strategy Portfolio', linewidth=2)
         plt.plot((1 + self.data['Returns']).cumprod() * 100000, label='Benchmark', alpha=0.7)
         plt.title('Portfolio Performance')
-        plt.xlabel('Date')
+        plt.xlabel('Year')
         plt.ylabel('Portfolio Value ($)')
         plt.legend()
         plt.grid(True, alpha=0.3)

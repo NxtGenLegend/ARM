@@ -5,7 +5,7 @@ import numpy as np
 import warnings
 warnings.filterwarnings("ignore")
 
-def get_sma_signal(symbol='^GSPC', start_date='2000-01-01', end_date='2023-12-31'):
+def get_sma_signal(symbol, start_date='2000-01-01', end_date='2023-12-31'):
 
     data = yf.download(symbol, start=start_date, end=end_date)
     data = data[['Close']]
@@ -29,84 +29,81 @@ def get_sma_signal(symbol='^GSPC', start_date='2000-01-01', end_date='2023-12-31
     return sma_signal_series
 
 # Function to calculate portfolio weights based on signals
-def rebalance_portfolio_sma(signal):
-    if signal == 1:  # Buy signal
-        stock_weight = 0.7
-        bond_weight = 0.3
-    elif signal == -1:  # Sell signal
-        stock_weight = 0.4
-        bond_weight = 0.6
-    else:  # Neutral
-        stock_weight = 0.5
-        bond_weight = 0.5
-    return stock_weight, bond_weight
+# def rebalance_portfolio_sma(signal):
+#     if signal == 1:  # Buy signal
+#         stock_weight = 0.7
+#         bond_weight = 0.3
+#     elif signal == -1:  # Sell signal
+#         stock_weight = 0.4
+#         bond_weight = 0.6
+#     else:  # Neutral
+#         stock_weight = 0.5
+#         bond_weight = 0.5
+#     return stock_weight, bond_weight
 
 # Function to backtest the SMA strategy
-def backtest_strategy_sma(data, signal_series):
-    # Download bond data (e.g., iShares 7-10 Year Treasury Bond ETF)
-    bond_symbol = 'IEF'
-    bond_data = yf.download(bond_symbol, start=data.index.min(), end=data.index.max())
-    bond_data = bond_data[['Close']]
-    bond_data.rename(columns={'Close': 'Bond_Close'}, inplace=True)
-    bond_data.dropna(inplace=True)
+# def backtest_strategy_sma(data, signal_series):
+    # # Download bond data (e.g., iShares 7-10 Year Treasury Bond ETF)
+    # bond_symbol = 'IEF'
+    # bond_data = yf.download(bond_symbol, start=data.index.min(), end=data.index.max())
+    # bond_data = bond_data[['Close']]
+    # bond_data.rename(columns={'Close': 'Bond_Close'}, inplace=True)
+    # bond_data.dropna(inplace=True)
 
-    # Calculate bond returns
-    bond_data['Bond_Log_Returns'] = np.log(bond_data['Bond_Close'] / bond_data['Bond_Close'].shift(1))
-    bond_data.dropna(inplace=True)
+    # # Calculate bond returns
+    # bond_data['Bond_Log_Returns'] = np.log(bond_data['Bond_Close'] / bond_data['Bond_Close'].shift(1))
+    # bond_data.dropna(inplace=True)
 
-    # Align bond data with the main data
-    data = data.join(bond_data['Bond_Log_Returns'], how='inner')
+    # # Align bond data with the main data
+    # data = data.join(bond_data['Bond_Log_Returns'], how='inner')
 
-    # Calculate stock returns
-    data['Stock_Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
-    data.dropna(inplace=True)
+    # # Calculate stock returns
+    # data['Stock_Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
+    # data.dropna(inplace=True)
 
-    # Initialize portfolio
-    portfolio = pd.DataFrame(index=data.index)
-    portfolio['Total'] = 100000  # Starting with $100,000
+    # # Initialize portfolio
+    # portfolio = pd.DataFrame(index=data.index)
+    # portfolio['Total'] = 100000  # Starting with $100,000
 
-    # Backtest portfolio based on SMA signals
-    for i in range(1, len(data)):
-        signal = signal_series.iloc[i - 1]  # Use signal from the previous day
-        stock_weight, bond_weight = rebalance_portfolio_sma(signal)
+    # # Backtest portfolio based on SMA signals
+    # for i in range(1, len(data)):
+    #     signal = signal_series.iloc[i - 1]  # Use signal from the previous day
+    #     stock_weight, bond_weight = rebalance_portfolio_sma(signal)
 
-        stock_return = data['Stock_Log_Returns'].iloc[i]
-        bond_return = data['Bond_Log_Returns'].iloc[i]
-        total_return = np.exp(stock_weight * stock_return + bond_weight * bond_return)
+    #     stock_return = data['Stock_Log_Returns'].iloc[i]
+    #     bond_return = data['Bond_Log_Returns'].iloc[i]
+    #     total_return = np.exp(stock_weight * stock_return + bond_weight * bond_return)
 
-        portfolio['Total'].iloc[i] = portfolio['Total'].iloc[i - 1] * total_return
+    #     portfolio['Total'].iloc[i] = portfolio['Total'].iloc[i - 1] * total_return
 
-    return portfolio
+    # return portfolio
 
 # Function to calculate performance metrics
-def calculate_performance_sma(portfolio):
-    # Calculate cumulative returns
-    cumulative_return = (portfolio['Total'][-1] / portfolio['Total'][0]) - 1
+# def calculate_performance_sma(portfolio):
+#     # Calculate cumulative returns
+#     cumulative_return = (portfolio['Total'][-1] / portfolio['Total'][0]) - 1
 
-    # Calculate annualized return
-    years = (portfolio.index[-1] - portfolio.index[0]).days / 365.25
-    annualized_return = (portfolio['Total'][-1] / portfolio['Total'][0]) ** (1 / years) - 1
+#     # Calculate annualized return
+#     years = (portfolio.index[-1] - portfolio.index[0]).days / 365.25
+#     annualized_return = (portfolio['Total'][-1] / portfolio['Total'][0]) ** (1 / years) - 1
 
-    # Calculate annualized volatility
-    portfolio['Daily_Return'] = portfolio['Total'].pct_change()
-    annualized_volatility = portfolio['Daily_Return'].std() * np.sqrt(252)
+#     # Calculate annualized volatility
+#     portfolio['Daily_Return'] = portfolio['Total'].pct_change()
+#     annualized_volatility = portfolio['Daily_Return'].std() * np.sqrt(252)
 
-    # Calculate Sharpe Ratio (Assuming risk-free rate is 0)
-    sharpe_ratio = annualized_return / annualized_volatility
+#     # Calculate Sharpe Ratio (Assuming risk-free rate is 0)
+#     sharpe_ratio = annualized_return / annualized_volatility
 
-    return cumulative_return, annualized_return, annualized_volatility, sharpe_ratio
+#     return cumulative_return, annualized_return, annualized_volatility, sharpe_ratio
 
 if __name__ == "__main__":
     # Call the function to generate signals
-    sma_signal_series = get_sma_signal()
-
-    # Reconstruct data used in get_sma_signal()
     symbol = '^GSPC'
     start_date = '2000-01-01'
     end_date = '2023-12-31'
+    sma_signal_series = get_sma_signal(symbol)
 
-    data = yf.download(symbol, start=start_date, end=end_date)
-    data = data[['Close']]
+    data = yf.download(symbol, start=start_date, end=end_date)[['Close']]
     data.dropna(inplace=True)
 
     # Calculate the Simple Moving Averages
@@ -134,25 +131,25 @@ if __name__ == "__main__":
     #print(data['Signal'][long_window:])
 
     # Make portfolio
-    portfolio = backtest_strategy_sma(data, sma_signal_series)
+    #portfolio = backtest_strategy_sma(data, sma_signal_series)
 
     # Backtest and evaluate the strategy
 
     # Plot portfolio performance
-    plt.figure(figsize=(14, 7))
-    plt.plot(portfolio.index, portfolio['Total'], label='SMA Strategy Portfolio')
-    plt.title('Portfolio Performance Using SMA Strategy')
-    plt.xlabel('Date')
-    plt.ylabel('Portfolio Value')
-    plt.legend()
-    plt.show()
+    #plt.figure(figsize=(14, 7))
+    #plt.plot(portfolio.index, portfolio['Total'], label='SMA Strategy Portfolio')
+    #plt.title('Portfolio Performance Using SMA Strategy')
+    #plt.xlabel('Date')
+    #plt.ylabel('Portfolio Value')
+    #plt.legend()
+    #plt.show()
 
     # Calculate performance metrics
-    cumulative_return, annualized_return, annualized_volatility, sharpe_ratio = calculate_performance_sma(portfolio)
-    print(f'Cumulative Return: {cumulative_return * 100:.2f}%')
-    print(f'Annualized Return: {annualized_return * 100:.2f}%')
-    print(f'Annualized Volatility: {annualized_volatility * 100:.2f}%')
-    print(f'Sharpe Ratio: {sharpe_ratio:.2f}')
+    # cumulative_return, annualized_return, annualized_volatility, sharpe_ratio = calculate_performance_sma(portfolio)
+    # print(f'Cumulative Return: {cumulative_return * 100:.2f}%')
+    # print(f'Annualized Return: {annualized_return * 100:.2f}%')
+    # print(f'Annualized Volatility: {annualized_volatility * 100:.2f}%')
+    # print(f'Sharpe Ratio: {sharpe_ratio:.2f}')
 
 
     # Plot the closing price along with the SMAs and signals
