@@ -33,16 +33,11 @@ def create_dataset(dataset, look_back=60):
         y.append(dataset[i, 0])
     return np.array(X), np.array(y)
 
-def get_lstm_signal():
+def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_date: str = '2023-12-31'):
     # Check if GPU is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using device: {device}')
     
-    # Data Collection
-    symbol = '^GSPC'
-    start_date = '2000-01-01'
-    end_date = '2023-12-31'
-
     data = yf.download(symbol, start=start_date, end=end_date)
     data = data[['Close']]
     data.dropna(inplace=True)

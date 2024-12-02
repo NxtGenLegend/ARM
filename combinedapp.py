@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 
 class CombinedStrategy:
     #'^GSPC'
-    def __init__(self, symbol: str = 'UNH', start_date: str = '2010-01-01', 
+    def __init__(self, symbol: str, start_date: str = '2010-01-01', 
                  end_date: str = '2023-12-31'):
         self.symbol = symbol
         self.start_date = start_date
@@ -32,9 +32,9 @@ class CombinedStrategy:
     def generate_signals(self):
         """Combine signals from all models"""
         print("Generating signals...")
-        hmm_data, hidden_states, bull_state, bear_state = get_hmm_signal()
-        lstm_signals, predictions, actuals = get_lstm_signal()
-        sma_signals = get_sma_signal()
+        hmm_data, hidden_states, bull_state, bear_state = get_hmm_signal(self.symbol)
+        lstm_signals, predictions, actuals = get_lstm_signal(self.symbol)
+        sma_signals = get_sma_signal(self.symbol)
 
         self.signals = pd.DataFrame(index=self.data.index)
         self.signals['HMM'] = pd.Series(hidden_states, index=hmm_data.index).reindex(self.signals.index).fillna(0)
@@ -112,7 +112,7 @@ class CombinedStrategy:
         plt.show()
 
 def main():
-    strategy = CombinedStrategy()
+    strategy = CombinedStrategy('UNH')
     signals = strategy.generate_signals()
     portfolio = strategy.backtest_strategy()
     metrics = strategy.calculate_metrics(portfolio)
