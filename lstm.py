@@ -9,13 +9,12 @@ from sklearn.metrics import mean_squared_error
 import warnings
 warnings.filterwarnings("ignore")
 
-# Define the LSTM Model
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=60, num_layers=2):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.2)
         self.fc = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
@@ -26,14 +25,14 @@ class LSTMModel(nn.Module):
         out = self.fc(out)
         return out
 
-def create_dataset(dataset, look_back=60):
+def create_dataset(dataset, look_back):
     X, y = [], []
     for i in range(look_back, len(dataset)):
         X.append(dataset[i - look_back:i, 0])
         y.append(dataset[i, 0])
     return np.array(X), np.array(y)
 
-def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_date: str = '2023-12-31'):
+def get_lstm_signal(symbol: str, start_date: str = '1999-01-01', end_date: str = '2019-12-31'):
     # Check if GPU is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using device: {device}')
@@ -52,13 +51,22 @@ def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_d
     )
     data.dropna(inplace=True)
 
+    # Split dates
+    training_end_date = '2010-12-31'
+    training_mask = data.index <= training_end_date
+    training_data_len = training_mask.sum()
+    
+    print(f"\nData split:")
+    print(f"Training period: {data.index[0]} to {data.index[training_data_len-1]}")
+    print(f"Testing period: {data.index[training_data_len]} to {data.index[-1]}")
+    print(f"Total days: {len(data)}, Training days: {training_data_len}, Testing days: {len(data)-training_data_len}\n")
+
     # Preprocessing: Use Annualized Returns
     returns = data['Annualized_Return'].values.reshape(-1, 1)
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(returns)
 
-    training_data_len = int(np.ceil(len(scaled_data) * 0.8))
-    look_back = 60
+    look_back = 120
 
     # Create Training and Testing Datasets
     train_data = scaled_data[0:training_data_len]
@@ -93,7 +101,7 @@ def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_d
 
         # Define Loss Function and Optimizer
         criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.0045, weight_decay=1e-3)
 
         # Train the Model
         for epoch in range(num_epochs):
@@ -143,6 +151,7 @@ def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_d
     # Calculate RMSE
     train_rmse = np.sqrt(mean_squared_error(y_train_actual, best_train_preds_np))
     test_rmse = np.sqrt(mean_squared_error(y_test_actual, best_test_preds_np))
+    print()
     print(f'Train RMSE: {train_rmse:.6f}')
     print(f'Test RMSE: {test_rmse:.6f}')
 
@@ -151,21 +160,31 @@ def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_d
     lstm_signals = np.where(best_test_preds_np[1:] > shifted_actual[1:], 1, -1)
 
     # Align dates (exclude the first date, as it lacks a previous day for comparison)
-    test_dates = data.index[len(data) - len(y_test_actual):]
+    test_dates = data.index[training_data_len:]
     lstm_signal_series = pd.Series(lstm_signals.flatten(), index=test_dates[1:])
 
     return lstm_signal_series, best_test_preds_np, y_test_actual
 
 if __name__ == "__main__":
     # Call the function to generate signals and get predictions
-    lstm_signal_series, test_preds, y_test_actual = get_lstm_signal()
+    lstm_signal_series, test_preds, y_test_actual = get_lstm_signal('^GSPC')
+
+    # Get the full data for date alignment
+    data = yf.download('^GSPC', start='2000-01-01', end='2020-12-31')
+    training_end_date = '2010-12-31'
+    training_mask = data.index <= training_end_date
+    training_data_len = training_mask.sum()
+    test_dates = data.index[training_data_len:]
 
     # Plot Results
     plt.figure(figsize=(14, 7))
-    plt.plot(test_preds, label='Predicted Annualized Returns')
-    plt.plot(y_test_actual, label='Actual Annualized Returns')
+    plt.plot(test_dates[:len(test_preds)], test_preds, 
+             label='Predicted Annualized Returns', alpha=0.7)
+    plt.plot(test_dates[:len(y_test_actual)], y_test_actual, 
+             label='Actual Annualized Returns', alpha=0.7)
     plt.title('LSTM Model - Predicted vs Actual Annualized Returns')
     plt.xlabel('Date')
     plt.ylabel('Annualized Returns')
+    plt.grid(True, alpha=0.3)
     plt.legend()
     plt.show()

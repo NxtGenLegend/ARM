@@ -10,8 +10,8 @@ warnings.filterwarnings("ignore")
 
 def get_hmm_signal(
     target_symbol,
-    start_date='2010-01-01',
-    end_date='2023-12-31'
+    start_date='2000-01-01',
+    end_date='2020-12-31'
 ):
     """
     Train HMM on multiple stocks and apply it to a specific stock.

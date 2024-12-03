@@ -9,8 +9,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class CombinedStrategy:
-    def __init__(self, symbol: str, start_date: str = '2010-01-01', 
-                 end_date: str = '2023-12-31'):
+    def __init__(self, symbol: str, start_date: str = '1999-01-01', 
+                 end_date: str = '2020-12-31'):
         self.symbol = symbol
         self.start_date = start_date
         self.end_date = end_date
@@ -19,80 +19,104 @@ class CombinedStrategy:
         self.load_data()
         
     def load_data(self):
-        """Load market data"""
-        data = yf.download(self.symbol, self.start_date, self.end_date)
+        """Load market data with proper lag handling"""
+        # Add warmup period for signal calculation
+        warmup_start = pd.Timestamp(self.start_date) - pd.Timedelta(days=252)
+        data = yf.download(self.symbol, warmup_start, self.end_date)
+        
         if data.empty or 'Close' not in data.columns:
             raise ValueError("Data download failed or 'Close' column is missing.")
-        self.data = data[['Close']]
-        # Using Close price returns with proper shifting
-        self.data['Returns'] = self.data['Close'].pct_change().shift(1)
-        self.data.dropna(inplace=True)
+            
+        # Calculate returns with proper shift to avoid lookahead bias
+        data['Returns'] = data['Close'].pct_change().shift(1)
+        data.dropna(inplace=True)
+        
+        # Trim to requested period after calculating initial returns
+        self.data = data[self.start_date:][['Close', 'Returns']]
         print(f"Data loaded from {self.data.index[0]} to {self.data.index[-1]}")
 
     def generate_signals(self):
-        """Combine signals from all models"""
+        """Combine signals from all models with proper lag handling"""
         print("Generating signals...")
+        
+        # Get signals from individual models
         hmm_data, hidden_states, bull_state, bear_state = get_hmm_signal(self.symbol)
         lstm_signals, predictions, actuals = get_lstm_signal(self.symbol)
         sma_signals = get_sma_signal(self.symbol)
 
+        # Create signals DataFrame aligned with price data
         self.signals = pd.DataFrame(index=self.data.index)
-        # Ensure signals are properly aligned and shifted
+        
+        # Align and shift all signals by 1 day to avoid lookahead bias
         self.signals['HMM'] = pd.Series(hidden_states, index=hmm_data.index).shift(1).reindex(self.signals.index).fillna(0)
         self.signals['LSTM'] = pd.Series(lstm_signals, index=lstm_signals.index).shift(1).reindex(self.signals.index).fillna(0)
         self.signals['SMA'] = pd.Series(sma_signals, index=sma_signals.index).shift(1).reindex(self.signals.index).fillna(0)
 
         def calculate_allocation(row):
-            # Using the successful weighting scheme
-            hmm_weight = 0.3 if row['HMM'] == bull_state else 0.7
-            lstm_weight = 0.4 if row['LSTM'] == 1 else -0.4
-            sma_weight = 0.4 if row['SMA'] == 1 else -0.4
+            # Calculate weights based on previous day's signals
             
-            # Simple additive allocation with wider bounds
+            hmm_weight = 0.3 if row['HMM'] == bull_state else 0.6
+            lstm_weight = 0.225 if row['LSTM'] == 1 else -0.225
+            sma_weight = 0.225 if row['SMA'] == 1 else -0.225
+            
+            # MODE 2 PARAMS (MID) - Stable Market
+            # hmm_weight = 0.4 if row['HMM'] == bull_state else -0.55
+            # lstm_weight = 0.4 if row['LSTM'] == 1 else -0.4
+            # sma_weight = 0.4 if row['SMA'] == 1 else -0.4
+            
+            #MODE 3 PARAMS (MID) - Volatile
+            # hmm_weight = 0.3 if row['HMM'] == bull_state else 0.6
+            # lstm_weight = 0.225 if row['LSTM'] == 1 else -0.225
+            # sma_weight = 0.225 if row['SMA'] == 1 else -0.225
+
+            
+            # Combine signals with bounds
             return np.clip(hmm_weight + lstm_weight + sma_weight, 0.1, 0.9)
         
+        # Calculate allocations
         self.signals['Stock_Allocation'] = self.signals.apply(calculate_allocation, axis=1)
         self.signals['Bond_Allocation'] = 1 - self.signals['Stock_Allocation']
+        
         return self.signals
 
     def backtest_strategy(self):
-        """Backtest the combined strategy"""
+        """Backtest the strategy with proper return alignment"""
         try:
-            # Download bond data
+            # Download and prepare bond data
             bond_data = yf.download('IEF', self.start_date, self.end_date)
             if bond_data.empty or 'Close' not in bond_data.columns:
                 raise ValueError("Bond data is empty or lacks a 'Close' column.")
-            # Shift bond returns to avoid look-ahead bias
-            bond_data['Bond_Returns'] = bond_data['Close'].pct_change().shift(1).dropna()
-
-            # Align bond data with the portfolio index
+            
+            # Calculate bond returns with proper shift
+            bond_data['Bond_Returns'] = bond_data['Close'].pct_change().shift(1)
             bond_returns = bond_data['Bond_Returns'].reindex(self.data.index).fillna(0)
 
-            # Initialize portfolio DataFrame
+            # Initialize portfolio
             portfolio = pd.DataFrame(index=self.signals.index)
-            # Signals are already shifted in generate_signals()
             portfolio['Stock_Alloc'] = self.signals['Stock_Allocation']
             portfolio['Bond_Alloc'] = self.signals['Bond_Allocation']
-
-            # Calculate portfolio returns
+            
+            # Calculate portfolio returns using shifted data
             portfolio['Returns'] = (
                 portfolio['Stock_Alloc'] * self.data['Returns'] + 
                 portfolio['Bond_Alloc'] * bond_returns
             )
 
-            # Calculate portfolio value over time
+            # Calculate cumulative portfolio value
             portfolio['Value'] = (1 + portfolio['Returns']).cumprod() * 100000
 
             return portfolio
+            
         except Exception as e:
             print(f"Error during backtest: {e}")
             raise
 
     def calculate_metrics(self, portfolio):
-        """Calculate performance metrics using geometric returns"""
+        """Calculate performance metrics using properly lagged returns"""
         returns = portfolio['Returns'].dropna()
+        
+        # Calculate metrics using geometric returns
         total_return = portfolio['Value'].iloc[-1] / 100000 - 1
-        # Use geometric mean for annualization
         annual_return = (1 + total_return) ** (252 / len(returns)) - 1
         volatility = returns.std() * np.sqrt(252)
         sharpe_ratio = annual_return / volatility
@@ -104,30 +128,45 @@ class CombinedStrategy:
             'Annual Return': annual_return * 100,
             'Annual Volatility': volatility * 100,
             'Sharpe Ratio': sharpe_ratio,
-            'Max Drawdown': max_drawdown * 100,
+            'Max Drawdown': max_drawdown * 100
         }
 
     def plot_results(self, portfolio):
-        """Plot strategy results"""
+        """Plot strategy results with benchmark comparison"""
         plt.figure(figsize=(15, 7))
+        
+        # Plot strategy and benchmark performance
         plt.plot(portfolio['Value'], label='Combined Strategy Portfolio', linewidth=2)
-        plt.plot((1 + self.data['Returns']).cumprod() * 100000, label='Benchmark', alpha=0.7)
+        plt.plot((1 + self.data['Returns']).cumprod() * 100000, 
+                 label='Benchmark', alpha=0.7)
+        
+        plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+        
         plt.title('Portfolio Performance')
         plt.xlabel('Date')
         plt.ylabel('Portfolio Value ($)')
-        plt.legend()
         plt.grid(True, alpha=0.3)
+        plt.legend()
         plt.show()
 
 def main():
-    strategy = CombinedStrategy('AAPL')
-    signals = strategy.generate_signals()
-    portfolio = strategy.backtest_strategy()
-    metrics = strategy.calculate_metrics(portfolio)
-    print("\nStrategy Metrics:")
-    for key, value in metrics.items():
-        print(f"{key}: {value:.2f}")
-    strategy.plot_results(portfolio)
+    try:
+        # Initialize and run strategy
+        strategy = CombinedStrategy('GOOGL')
+        signals = strategy.generate_signals()
+        portfolio = strategy.backtest_strategy()
+        metrics = strategy.calculate_metrics(portfolio)
+        
+        # Print metrics
+        print("\nStrategy Metrics:")
+        for key, value in metrics.items():
+            print(f"{key}: {value:.2f}")
+        
+        # Plot results
+        strategy.plot_results(portfolio)
+        
+    except Exception as e:
+        print(f"Error in strategy execution: {e}")
 
 if __name__ == "__main__":
     main()
