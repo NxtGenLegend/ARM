@@ -10,39 +10,30 @@ warnings.filterwarnings("ignore")
 
 def get_hmm_signal(
     target_symbol,
-    train_symbols=['^GSPC', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'JNJ', 'WMT', 'KO', 'PEP', 'XOM'],
     start_date='2010-01-01',
     end_date='2023-12-31'
 ):
     """
     Train HMM on multiple stocks and apply it to a specific stock.
     """
-    # Load training data for multiple stocks
-    train_data = []
-    for symbol in train_symbols:
-        temp = yf.download(symbol, start=start_date, end=end_date)[['Close']]
-        temp.rename(columns={'Close': symbol}, inplace=True)
-        train_data.append(temp)
-    train_data = pd.concat(train_data, axis=1)
+    # Get training data with 1 year holdout
+    train_end = pd.Timestamp(end_date) - pd.Timedelta(days=252)  
+    train_data = yf.download(target_symbol, start=start_date, end=train_end)[['Close']]
+    
+    # Calculate features for single stock
+    train_data['Log_Returns'] = np.log(train_data['Close'] / train_data['Close'].shift(1))
+    train_data['Volatility'] = train_data['Log_Returns'].rolling(window=20).std()
+    train_data['Momentum'] = train_data['Close'] / train_data['Close'].shift(10) - 1
+    
+    # Drop any NaN values
     train_data.dropna(inplace=True)
 
-    # Calculate features for training
-    for symbol in train_symbols:
-        train_data[f'{symbol}_Log_Returns'] = np.log(train_data[symbol] / train_data[symbol].shift(1))
-        train_data[f'{symbol}_Volatility'] = train_data[f'{symbol}_Log_Returns'].rolling(window=20).std()
-        train_data[f'{symbol}_Momentum'] = train_data[symbol] / train_data[symbol].shift(10) - 1
-
-    train_data['Average_Log_Returns'] = train_data[[f'{symbol}_Log_Returns' for symbol in train_symbols]].mean(axis=1)
-    train_data['Average_Volatility'] = train_data[[f'{symbol}_Volatility' for symbol in train_symbols]].mean(axis=1)
-    train_data['Average_Momentum'] = train_data[[f'{symbol}_Momentum' for symbol in train_symbols]].mean(axis=1)
-    train_data.dropna(inplace=True)
-
-    # Scale the features
+    # Scale features for HMM
     scaler = StandardScaler()
-    scaled_features = scaler.fit_transform(train_data[['Average_Log_Returns', 'Average_Volatility', 'Average_Momentum']])
+    scaled_features = scaler.fit_transform(train_data[['Log_Returns', 'Volatility', 'Momentum']])
 
     # Train the HMM model
-    hmm_model = GaussianHMM(n_components=3, covariance_type='full', n_iter=5000, random_state=42)
+    hmm_model = GaussianHMM(n_components=2, covariance_type='full', n_iter=1000, random_state=42)
     hmm_model.fit(scaled_features)
 
     # Load the target stock data

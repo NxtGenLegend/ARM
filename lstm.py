@@ -37,7 +37,7 @@ def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_d
     # Check if GPU is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using device: {device}')
-    
+
     data = yf.download(symbol, start=start_date, end=end_date)
     data = data[['Close']]
     data.dropna(inplace=True)
@@ -93,7 +93,7 @@ def get_lstm_signal(symbol: str = '^GSPC', start_date: str = '2000-01-01', end_d
 
         # Define Loss Function and Optimizer
         criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-3)
 
         # Train the Model
         for epoch in range(num_epochs):

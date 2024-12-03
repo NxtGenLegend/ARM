@@ -9,7 +9,6 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class CombinedStrategy:
-    #'^GSPC'
     def __init__(self, symbol: str, start_date: str = '2010-01-01', 
                  end_date: str = '2023-12-31'):
         self.symbol = symbol
@@ -25,7 +24,8 @@ class CombinedStrategy:
         if data.empty or 'Close' not in data.columns:
             raise ValueError("Data download failed or 'Close' column is missing.")
         self.data = data[['Close']]
-        self.data['Returns'] = self.data['Close'].pct_change()
+        # Using Close price returns with proper shifting
+        self.data['Returns'] = self.data['Close'].pct_change().shift(1)
         self.data.dropna(inplace=True)
         print(f"Data loaded from {self.data.index[0]} to {self.data.index[-1]}")
 
@@ -37,14 +37,18 @@ class CombinedStrategy:
         sma_signals = get_sma_signal(self.symbol)
 
         self.signals = pd.DataFrame(index=self.data.index)
-        self.signals['HMM'] = pd.Series(hidden_states, index=hmm_data.index).reindex(self.signals.index).fillna(0)
-        self.signals['LSTM'] = pd.Series(lstm_signals, index=lstm_signals.index).reindex(self.signals.index).fillna(0)
-        self.signals['SMA'] = pd.Series(sma_signals, index=sma_signals.index).reindex(self.signals.index).fillna(0)
+        # Ensure signals are properly aligned and shifted
+        self.signals['HMM'] = pd.Series(hidden_states, index=hmm_data.index).shift(1).reindex(self.signals.index).fillna(0)
+        self.signals['LSTM'] = pd.Series(lstm_signals, index=lstm_signals.index).shift(1).reindex(self.signals.index).fillna(0)
+        self.signals['SMA'] = pd.Series(sma_signals, index=sma_signals.index).shift(1).reindex(self.signals.index).fillna(0)
 
         def calculate_allocation(row):
-            hmm_weight = 0.7 if row['HMM'] == bull_state else 0.3
-            lstm_weight = 0.1 if row['LSTM'] == 1 else -0.1
-            sma_weight = 0.1 if row['SMA'] == 1 else -0.1
+            # Using the successful weighting scheme
+            hmm_weight = 0.3 if row['HMM'] == bull_state else 0.7
+            lstm_weight = 0.4 if row['LSTM'] == 1 else -0.4
+            sma_weight = 0.4 if row['SMA'] == 1 else -0.4
+            
+            # Simple additive allocation with wider bounds
             return np.clip(hmm_weight + lstm_weight + sma_weight, 0.1, 0.9)
         
         self.signals['Stock_Allocation'] = self.signals.apply(calculate_allocation, axis=1)
@@ -58,15 +62,17 @@ class CombinedStrategy:
             bond_data = yf.download('IEF', self.start_date, self.end_date)
             if bond_data.empty or 'Close' not in bond_data.columns:
                 raise ValueError("Bond data is empty or lacks a 'Close' column.")
-            bond_data['Bond_Returns'] = bond_data['Close'].pct_change().dropna()
+            # Shift bond returns to avoid look-ahead bias
+            bond_data['Bond_Returns'] = bond_data['Close'].pct_change().shift(1).dropna()
 
             # Align bond data with the portfolio index
             bond_returns = bond_data['Bond_Returns'].reindex(self.data.index).fillna(0)
 
             # Initialize portfolio DataFrame
             portfolio = pd.DataFrame(index=self.signals.index)
-            portfolio['Stock_Alloc'] = self.signals['Stock_Allocation'].shift(1).fillna(0.5)
-            portfolio['Bond_Alloc'] = self.signals['Bond_Allocation'].shift(1).fillna(0.5)
+            # Signals are already shifted in generate_signals()
+            portfolio['Stock_Alloc'] = self.signals['Stock_Allocation']
+            portfolio['Bond_Alloc'] = self.signals['Bond_Allocation']
 
             # Calculate portfolio returns
             portfolio['Returns'] = (
@@ -83,14 +89,16 @@ class CombinedStrategy:
             raise
 
     def calculate_metrics(self, portfolio):
-        """Calculate performance metrics"""
+        """Calculate performance metrics using geometric returns"""
         returns = portfolio['Returns'].dropna()
         total_return = portfolio['Value'].iloc[-1] / 100000 - 1
+        # Use geometric mean for annualization
         annual_return = (1 + total_return) ** (252 / len(returns)) - 1
         volatility = returns.std() * np.sqrt(252)
         sharpe_ratio = annual_return / volatility
         drawdowns = (portfolio['Value'] / portfolio['Value'].cummax() - 1)
         max_drawdown = drawdowns.min()
+        
         return {
             'Total Return': total_return * 100,
             'Annual Return': annual_return * 100,
@@ -105,14 +113,14 @@ class CombinedStrategy:
         plt.plot(portfolio['Value'], label='Combined Strategy Portfolio', linewidth=2)
         plt.plot((1 + self.data['Returns']).cumprod() * 100000, label='Benchmark', alpha=0.7)
         plt.title('Portfolio Performance')
-        plt.xlabel('Year')
+        plt.xlabel('Date')
         plt.ylabel('Portfolio Value ($)')
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.show()
 
 def main():
-    strategy = CombinedStrategy('JNJ')
+    strategy = CombinedStrategy('AAPL')
     signals = strategy.generate_signals()
     portfolio = strategy.backtest_strategy()
     metrics = strategy.calculate_metrics(portfolio)
