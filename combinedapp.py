@@ -55,19 +55,24 @@ class CombinedStrategy:
         def calculate_allocation(row):
             # Calculate weights based on previous day's signals
             
-            hmm_weight = 0.3 if row['HMM'] == bull_state else 0.6
-            lstm_weight = 0.225 if row['LSTM'] == 1 else -0.225
-            sma_weight = 0.225 if row['SMA'] == 1 else -0.225
-            
-            # MODE 2 PARAMS (MID) - Stable Market
+            # MODE 1 PARAMS (Low) - Defensive 
             # hmm_weight = 0.4 if row['HMM'] == bull_state else -0.55
             # lstm_weight = 0.4 if row['LSTM'] == 1 else -0.4
             # sma_weight = 0.4 if row['SMA'] == 1 else -0.4
+            
+            # MODE 2 Params (MID) - Stable Market
+            # hmm_weight = 0.6 if row['HMM'] == bull_state else -0.8
+            # lstm_weight = 0.4 if row['LSTM'] == 1 else -0.8
+            # sma_weight = -0.4 if row['SMA'] == 1 else 0.4
             
             #MODE 3 PARAMS (MID) - Volatile
             # hmm_weight = 0.3 if row['HMM'] == bull_state else 0.6
             # lstm_weight = 0.225 if row['LSTM'] == 1 else -0.225
             # sma_weight = 0.225 if row['SMA'] == 1 else -0.225
+            
+            hmm_weight = 0.6 if row['HMM'] == bull_state else -0.8
+            lstm_weight = 0.4 if row['LSTM'] == 1 else -0.8
+            sma_weight = -0.4 if row['SMA'] == 1 else 0.4
 
             
             # Combine signals with bounds
@@ -152,7 +157,7 @@ class CombinedStrategy:
 def main():
     try:
         # Initialize and run strategy
-        strategy = CombinedStrategy('GOOGL')
+        strategy = CombinedStrategy('PG')
         signals = strategy.generate_signals()
         portfolio = strategy.backtest_strategy()
         metrics = strategy.calculate_metrics(portfolio)

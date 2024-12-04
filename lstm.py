@@ -101,7 +101,7 @@ def get_lstm_signal(symbol: str, start_date: str = '1999-01-01', end_date: str =
 
         # Define Loss Function and Optimizer
         criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.0045, weight_decay=1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.00185, weight_decay=0.0012)
 
         # Train the Model
         for epoch in range(num_epochs):
